@@ -84,6 +84,7 @@ class User(UserMixin, db.Model):
                                 backref=db.backref('followed', lazy='joined'),
                                 lazy='dynamic',
                                 cascade='all, delete-orphan')
+    comments = db.relationship('Comment', backref='author', lazy='dynamic')
 
     @staticmethod
     def generate_fake(count=100):
@@ -119,12 +120,13 @@ class User(UserMixin, db.Model):
         super(User, self).__init__(**kwargs)
         if self.role is None:
             if self.email == current_app.config['FLASKY_ADMIN']:
-                self.role = Role.query.filter_by(permission=0xff).first()
+                self.role = Role.query.filter_by(permissions=0xff).first()
             if self.role is None:
                 self.role = Role.query.filter_by(default=True).first()
         if self.email is not None and self.avatar_hash is None:
             self.avatar_hash = hashlib.md5(
                 self.email.encode('utf-8')).hexdigest()
+        self.followed.append(Follow(followed=self))
 
     @property
     def password(self):
@@ -262,6 +264,7 @@ class Post(db.Model):
     body_html = db.Column(db.Text)
     timestamp = db.Column(db.DateTime, index=True, default=datetime.utcnow)
     author_id = db.Column(db.Integer, db.ForeignKey('users.id'))
+    comments = db.relationship('Comment', backref='post', lazy='dynamic')
 
     @staticmethod
     def generate_fake(count=100):
@@ -288,3 +291,14 @@ class Post(db.Model):
             tags=allowed_tags, strip=True))
 
 db.event.listen(Post.body, 'set', Post.on_changed_body)
+
+
+class Comment(db.Model):
+    __tablename__ = 'comments'
+    id = db.Column(db.Integer, primary_key=True)
+    body = db.Column(db.Text)
+    body_html = db.Column(db.Text)
+    timestamp = db.Column(db.DateTime, index=True, default=datetime.utcnow)
+    disabled = db.Column(db.Boolean)
+    author_id = db.Column(db.Integer, db.ForeignKey('users.id'))
+    post_id = db.Column(db.Integer, db.ForeignKey('posts.id'))
